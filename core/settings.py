@@ -1,0 +1,1 @@
+AVAILABLE_PACKAGES = ['tasks1']
