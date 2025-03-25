@@ -1,17 +1,14 @@
 import logging
 import json
-from typing import Optional, Dict, Any, List, TYPE_CHECKING
+from typing import Optional, Dict, Any, List
 
+import magic
 import requests
-import boto3
 from botocore.exceptions import ClientError
 
-if TYPE_CHECKING:
-    from mypy_boto3_s3.client import S3Client
 
 
-
-def list_buckets(s3_client: 'S3Client') -> List[Dict[str, Any]]:
+def list_buckets(s3_client) -> List[Dict[str, Any]]:
     try:
         response = s3_client.list_buckets()
         logging.info(f"Found {len(response.get('Buckets', []))} buckets.")
@@ -20,7 +17,7 @@ def list_buckets(s3_client: 'S3Client') -> List[Dict[str, Any]]:
         logging.error(f"Could not list buckets: {e}", exc_info=True)
         raise
 
-def bucket_exists(s3_client: 'S3Client', bucket_name: str) -> bool:
+def bucket_exists(s3_client, bucket_name: str) -> bool:
     try:
         s3_client.head_bucket(Bucket=bucket_name)
         logging.debug(f"Bucket '{bucket_name}' exists and is accessible.")
@@ -37,7 +34,7 @@ def bucket_exists(s3_client: 'S3Client', bucket_name: str) -> bool:
             logging.error(f"Error checking bucket '{bucket_name}': {e}", exc_info=True)
             raise
 
-def create_bucket(s3_client: 'S3Client', bucket_name: str, region: str = 'us-west-2') -> None:
+def create_bucket(s3_client, bucket_name: str, region: str = 'us-west-2') -> None:
 
     try:
         if region == "us-east-1":
@@ -55,7 +52,7 @@ def create_bucket(s3_client: 'S3Client', bucket_name: str, region: str = 'us-wes
         raise
 
 
-def delete_bucket(s3_client: 'S3Client', bucket_name: str) -> None:
+def delete_bucket(s3_client, bucket_name: str) -> None:
     try:
         s3_client.delete_bucket(Bucket=bucket_name)
         logging.info(f"Bucket '{bucket_name}' deleted successfully.")
@@ -66,52 +63,62 @@ def delete_bucket(s3_client: 'S3Client', bucket_name: str) -> None:
         raise
 
 
-def download_file_and_upload_to_s3(s3_client: 'S3Client',
+def download_file_and_upload_to_s3(s3_client,
                                    bucket_name: str,
                                    url: str,
-                                   s3_key: str,
-                                   *,
-                                   request_timeout: int = 10,
-                                   content_type: Optional[str] = None,
-                                   upload_extra_args: Optional[Dict[str, Any]] = None) -> None:
-    effective_extra_args = upload_extra_args or {}
-    if content_type and 'ContentType' not in effective_extra_args:
-        effective_extra_args['ContentType'] = content_type
-
-    logging.info(f"Attempting to download '{url}' and upload to s3://{bucket_name}/{s3_key}")
-
+                                   s3_key: str,) -> None:
+    logging.info(f"Executing command: upload (Bucket: {bucket_name}, URL: {url}, Key: {s3_key})")
     try:
-        with requests.get(url, stream=True, timeout=request_timeout) as response:
+        detected_mime = None
+        try:
+            logging.debug(f"Fetching initial chunk from {url} for type detection.")
+            with requests.get(url, stream=True, timeout=15) as r_head:
+                r_head.raise_for_status()
+                initial_chunk = r_head.raw.read(2048)
+                if not initial_chunk:
+                        raise ValueError("Downloaded file appears empty.")
+                detected_mime = magic.from_buffer(initial_chunk, mime=True)
+                logging.info(f"Detected MIME type: {detected_mime}")
+        except requests.exceptions.RequestException as req_err:
+            raise ValueError(f"Failed to download initial part of file: {req_err}") from req_err
+        except ImportError:
+            logging.error("python-magic library not found. Cannot perform file type validation.")
+            
+            raise
+        except Exception as magic_err:
+                
+                logging.warning(f"Error during MIME type detection: {magic_err}. Proceeding without reliable type.", exc_info=True)
+                raise ValueError(f"Could not determine file type: {magic_err}") from magic_err
+
+        print(f"Validation determined type {detected_mime}. Proceeding with upload...")
+        with requests.get(url, stream=True, timeout=600) as response: 
             response.raise_for_status()
 
-            if int(response.headers.get('content-length', 0)) == 0 and 'Transfer-Encoding' not in response.headers:
-                 logging.warning(f"URL '{url}' returned empty content. Skipping upload.")
-                 return 
+            extra_args = {}
+            
+            if detected_mime:
+                    extra_args['ContentType'] = detected_mime
 
-            try:
-                s3_client.upload_fileobj(
-                    Fileobj=response.raw,  # Pass the raw byte stream
-                    Bucket=bucket_name,
-                    Key=s3_key,
-                    ExtraArgs=effective_extra_args
-                )
-                logging.info(f"Successfully uploaded '{url}' to s3://{bucket_name}/{s3_key}")
-            except ClientError as e:
-                logging.error(f"S3 upload failed for key '{s3_key}': {e}", exc_info=True)
-                raise
-            except Exception as e:
-                logging.error(f"Unexpected error during S3 upload stream for key '{s3_key}': {e}", exc_info=True)
-                raise
-
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to download file from URL '{url}': {e}", exc_info=True)
-        raise
-    except Exception as e: # Catch other unexpected errors like invalid URL format etc.
-         logging.error(f"An unexpected error occurred during download/upload process for '{url}': {e}", exc_info=True)
-         raise
+            s3_client.upload_fileobj(
+                Fileobj=response.raw,
+                Bucket=bucket_name,
+                Key=s3_key,
+                ExtraArgs=extra_args
+            )
+            s3_url = f"https://{bucket_name}.s3.amazonaws.com/{s3_key}"
+            print(f"Successfully uploaded '{url}' to 's3://{bucket_name}/{s3_key}'")
+            print(f"File accessible at: {s3_url}")
 
 
-def set_object_acl(s3_client: 'S3Client', bucket_name: str, s3_key: str, acl: str = 'private') -> None:
+    except (ClientError, ValueError, requests.exceptions.RequestException) as e:
+        logging.error(f"Failed to upload file: {e}", exc_info=True)
+        print(f"Error uploading file for key '{s3_key}'. See logs.")
+    except Exception as e:
+        logging.exception(f"Unexpected error during upload: {e}")
+        print("An unexpected error occurred during upload. See logs.")
+
+
+def set_object_acl(s3_client, bucket_name: str, s3_key: str, acl: str = 'private') -> None:
     valid_acls = [
         'private', 'public-read', 'public-read-write', 'authenticated-read',
         'aws-exec-read', 'bucket-owner-read', 'bucket-owner-full-control'
@@ -141,7 +148,7 @@ def generate_public_read_policy(bucket_name: str) -> str:
     return json.dumps(policy)
 
 
-def apply_bucket_policy(s3_client: 'S3Client', bucket_name: str, policy_json: str) -> None:
+def apply_bucket_policy(s3_client, bucket_name: str, policy_json: str) -> None:
     try:
         # Validate JSON structure before sending to AWS (optional but good practice)
         json.loads(policy_json)
@@ -155,7 +162,7 @@ def apply_bucket_policy(s3_client: 'S3Client', bucket_name: str, policy_json: st
         raise
 
 
-def delete_public_access_block(s3_client: 'S3Client', bucket_name: str) -> None:
+def delete_public_access_block(s3_client, bucket_name: str) -> None:
     try:
         s3_client.delete_public_access_block(Bucket=bucket_name)
         logging.info(f"Deleted Public Access Block for bucket '{bucket_name}'.")
@@ -164,7 +171,7 @@ def delete_public_access_block(s3_client: 'S3Client', bucket_name: str) -> None:
         raise
 
 
-def read_bucket_policy(s3_client: 'S3Client', bucket_name: str) -> Optional[str]:
+def read_bucket_policy(s3_client, bucket_name: str) -> Optional[str]:
     try:
         policy_response = s3_client.get_bucket_policy(Bucket=bucket_name)
         policy_str = policy_response.get("Policy")
