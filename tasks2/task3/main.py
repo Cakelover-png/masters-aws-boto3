@@ -44,17 +44,17 @@ class S3DeleteBucketTask(BaseTask):
                 print(f"Bucket '{bucket_name}' does not exist or is inaccessible.")
 
         except ClientError as e:
-            logging.error(f"Task '{self.name}' failed for bucket '{bucket_name}': {e}", exc_info=True) # Log stack trace
+            logging.error(f"Task '{self.name}' failed for bucket '{bucket_name}': {e}", exc_info=True)
             print(f"Error processing bucket '{bucket_name}'. Operation failed.")
             if e.response.get("Error", {}).get("Code") == 'BucketNotEmpty':
                 print("Hint: Buckets must be empty before deletion.")
             else:
                 print("See logs for details.")
         except ValueError as e:
-            logging.error(f"Task '{self.name}' failed due to config error: {e}", exc_info=True) # Log stack trace
+            logging.error(f"Task '{self.name}' failed due to config error: {e}", exc_info=True)
             print(f"Configuration error processing bucket '{bucket_name}'. See logs.")
         except Exception as e:
-            logging.exception(f"Unexpected error in task '{self.name}' for bucket '{bucket_name}': {e}") # Log stack trace
+            logging.exception(f"Unexpected error in task '{self.name}' for bucket '{bucket_name}': {e}")
             print(f"An unexpected error occurred processing '{bucket_name}'. See logs.")
 
         logging.info(f"Task '{self.name}' finished for bucket '{bucket_name}'.")

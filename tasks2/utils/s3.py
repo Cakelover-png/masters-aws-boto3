@@ -141,8 +141,8 @@ def generate_public_read_policy(bucket_name: str) -> str:
             "Sid": "PublicReadGetObject",
             "Effect": "Allow",
             "Principal": "*",
-            "Action": ["s3:GetObject"], # Action should be a list
-            "Resource": f"arn:aws:s3:::{bucket_name}/*" # Objects within the bucket
+            "Action": ["s3:GetObject"],
+            "Resource": f"arn:aws:s3:::{bucket_name}/*"
         }]
     }
     return json.dumps(policy)

@@ -38,7 +38,6 @@ class NumberExtractorTask(BaseTask):
                 else:
                     odd_list.append(int_num)
         
-        # Print results
         print(f"Float numbers: {float_list}")
         print(f"Odd numbers: {odd_list}")
         print(f"Even numbers: {even_list}")

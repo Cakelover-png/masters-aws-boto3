@@ -91,8 +91,8 @@ class S3ManagementTask(BaseTask):
                  # This should ideally be caught by argparse 'required=True'
                  logging.error(f"No handler class defined for command: {args.command}")
                  print(f"Error: Command '{args.command}' is not properly configured.")
-                 self.parser.print_help() # Show help if command setup is broken
-                 return # Or sys.exit
+                 self.parser.print_help()
+                 return
 
             handler_class: Type[BaseS3CommandHandler] = args.handler_class
             handler_instance = handler_class(s3_client)
