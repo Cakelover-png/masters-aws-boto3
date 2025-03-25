@@ -13,6 +13,8 @@ eval $(poetry env activate)
 
 ## გამოყენება
 
+შეცვალეთ example.env .env-ად და მოუთითეთ მოცემული secrets
+
 ```
 python manage.py <task_path> [args...]
 
