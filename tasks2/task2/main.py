@@ -7,7 +7,6 @@ from tasks2.utils.client import init_s3_client
 from tasks2.utils.s3 import apply_bucket_policy, delete_public_access_block, read_bucket_policy
 
 
-
 def generate_dev_test_public_policy(bucket_name: str) -> str:
     policy = {
         "Version": "2012-10-17",
@@ -23,7 +22,6 @@ def generate_dev_test_public_policy(bucket_name: str) -> str:
         }]
     }
     return json.dumps(policy)
-
 
 
 class S3PublicPolicyTask(BaseTask):

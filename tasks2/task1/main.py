@@ -6,7 +6,6 @@ from tasks2.utils.s3 import bucket_exists, create_bucket
 from botocore.exceptions import ClientError
 
 
-
 class S3BucketTask(BaseTask):
     @property
     def name(self) -> str:

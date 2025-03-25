@@ -160,7 +160,8 @@ class SetBucketPolicyHandler(BaseS3CommandHandler):
                     print("Public Access Block removed successfully.")
                 except ClientError as pab_error:
                     
-                    logging.warning(f"Could not delete Public Access Block (may not exist or perms issue): {pab_error}. Continuing policy application attempt.", exc_info=True)
+                    logging.warning(f"Could not delete Public Access Block (may not exist or perms issue): {pab_error}."
+                                    "Continuing policy application attempt.", exc_info=True)
                     print("Warning: Could not remove Public Access Block. Policy might not be effective. See logs.")
             else:
                  print("Skipping Public Access Block removal as requested.")
