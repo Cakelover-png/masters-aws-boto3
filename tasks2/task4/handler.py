@@ -153,15 +153,6 @@ class SetBucketPolicyHandler(BaseS3CommandHandler):
     def execute(self, args: argparse.Namespace):
         logging.info(f"Executing command: set-policy (Bucket: {args.bucket_name})")
         try:
-            try:
-                if read_bucket_policy(self.client, args.bucket_name):
-                    print(f"Bucket '{args.bucket_name}' already has a policy. Use 'get-policy' to view. No changes made.")
-                    logging.warning(f"Policy already exists on {args.bucket_name}. Aborting policy set operation.")
-                    return 
-            except ClientError as e:
-                 if e.response.get("Error", {}).get("Code") != 'NoSuchBucketPolicy':
-                     raise 
-
             if not args.skip_pab_delete:
                 print("Attempting to remove Public Access Block (required for public policy)...")
                 try:
