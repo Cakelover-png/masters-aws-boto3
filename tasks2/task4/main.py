@@ -55,7 +55,6 @@ class S3ManagementTask(BaseTask):
         p_upload.add_argument('--bucket-name', required=True, help='Target bucket name.')
         p_upload.add_argument('--url', required=True, help='URL of the file to download.')
         p_upload.add_argument('--s3-key', required=True, help='Destination key (path/filename) in S3.')
-        p_upload.add_argument('--acl', help='Optional canned ACL (e.g., public-read).')
         p_upload.set_defaults(handler_class=UploadObjectHandler)
 
         p_set_acl = subparsers.add_parser('set-object-acl', help='Set ACL for an S3 object.')
