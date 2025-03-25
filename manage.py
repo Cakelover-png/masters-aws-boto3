@@ -4,6 +4,10 @@ import inspect
 from core.settings import AVAILABLE_PACKAGES
 from core.utils.tasks import BaseTask
 import pkgutil
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 def get_available_tasks():
     tasks = {}
@@ -70,7 +74,7 @@ if __name__ == "__main__":
             print(f"No tasks found matching prefix '{search_prefix}'" if search_prefix else "No tasks found")
         else:
             print("Available tasks:")
-            for task_path, task in filtered_tasks.items():
+            for task_path, task in sorted(filtered_tasks.items(), key=lambda x: x[0]):  
                 print(f"  {task_path}: {task.small_desc}")
     else:
         run_task(command)

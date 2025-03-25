@@ -1,1 +1,1 @@
-AVAILABLE_PACKAGES = ['tasks1']
+AVAILABLE_PACKAGES = ['tasks1', 'tasks2']
