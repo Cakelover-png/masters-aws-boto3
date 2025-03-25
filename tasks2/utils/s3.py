@@ -6,6 +6,8 @@ import magic
 import requests
 from botocore.exceptions import ClientError
 
+from core.settings import ALLOWED_MIMETYPE_EXTENSIONS
+
 
 
 def list_buckets(s3_client) -> List[Dict[str, Any]]:
@@ -79,6 +81,10 @@ def download_file_and_upload_to_s3(s3_client,
                         raise ValueError("Downloaded file appears empty.")
                 detected_mime = magic.from_buffer(initial_chunk, mime=True)
                 logging.info(f"Detected MIME type: {detected_mime}")
+
+                if detected_mime not in set(ALLOWED_MIMETYPE_EXTENSIONS.keys()):
+                    allowed_str = ", ".join(ALLOWED_MIMETYPE_EXTENSIONS.get(m, m) for m in ALLOWED_MIMETYPE_EXTENSIONS)
+                    raise ValueError(f"Invalid file type detected: '{detected_mime}'. Allowed types: {allowed_str}")
         except requests.exceptions.RequestException as req_err:
             raise ValueError(f"Failed to download initial part of file: {req_err}") from req_err
         except ImportError:
