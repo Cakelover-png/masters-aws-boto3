@@ -1,3 +1,4 @@
+import logging
 import magic
 import os
 from botocore.exceptions import ClientError
@@ -194,4 +195,40 @@ def set_delete_lifecycle_policy(s3_client, bucket_name: str, days_to_expiration:
         return False
     except Exception as e:
         print(f"An unexpected error occurred setting lifecycle policy: {e}")
+        return False
+    
+
+
+
+
+def delete_s3_object(s3_client, bucket_name: str, object_key: str):
+    """
+    Deletes a specific object from an S3 bucket.
+
+    Args:
+        s3_client: Initialized boto3 S3 client.
+        bucket_name: Name of the bucket containing the object.
+        object_key: The key (path/filename) of the object to delete.
+
+    Returns:
+        True if deletion was successful or the object didn't exist, False otherwise.
+    """
+    print(f"Attempting to delete object 's3://{bucket_name}/{object_key}'...")
+    try:
+        s3_client.delete_object(
+            Bucket=bucket_name,
+            Key=object_key
+        )
+        print(f"Successfully deleted object 's3://{bucket_name}/{object_key}' (or it didn't exist).")
+        return True
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchBucket':
+            print(f"Error: Bucket '{bucket_name}' not found.")
+        else:
+            print(f"Error deleting object 's3://{bucket_name}/{object_key}': {e}")
+            logging.error(f"Failed to delete s3://{bucket_name}/{object_key}: {e}", exc_info=True)
+        return False
+    except Exception as e:
+        print(f"An unexpected error occurred deleting object 's3://{bucket_name}/{object_key}': {e}")
+        logging.exception(f"Unexpected error deleting s3://{bucket_name}/{object_key}: {e}")
         return False
