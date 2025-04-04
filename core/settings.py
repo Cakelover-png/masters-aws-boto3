@@ -7,3 +7,5 @@ ALLOWED_MIMETYPE_EXTENSIONS = {
     'image/webp': '.webp',
     'video/mp4': '.mp4'
 }
+
+PART_MIN_SIZE = 5 * 1024 * 1024

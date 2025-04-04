@@ -1,8 +1,8 @@
 import logging
 import sys
 from botocore.exceptions import ClientError
+from core.utils.client import init_s3_client
 from core.utils.tasks import BaseTask
-from tasks2.utils.client import init_s3_client
 from tasks2.utils.s3 import bucket_exists, delete_bucket
 
 
