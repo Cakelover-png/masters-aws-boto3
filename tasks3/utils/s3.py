@@ -1,11 +1,11 @@
+from collections import defaultdict
 import logging
 from typing import Any, Dict, List, Optional
-import magic
 import os
 from botocore.exceptions import ClientError
 import math
 
-from core.settings import ALLOWED_MIMETYPE_EXTENSIONS, PART_MIN_SIZE
+from core.settings import PART_MIN_SIZE
 
 def upload_small_file(s3_client, bucket_name: str, file_path: str, object_key: str):
     """
@@ -56,17 +56,16 @@ def upload_large_file(
     if not os.path.exists(file_path):
         print(f"Error: The file {file_path} was not found.")
         return False
-
-    try:
-        detected_mimetype = magic.from_file(file_path, mime=True)
-        print(f"Detected MIME type: {detected_mimetype}")
-        if detected_mimetype not in ALLOWED_MIMETYPE_EXTENSIONS:
-            print(f"Error: File MIME type '{detected_mimetype}' is not in the allowed list: {ALLOWED_MIMETYPE_EXTENSIONS.keys()}")
-            return False
-        print("MIME type validation passed.")
-    except Exception as e:
-        print(f"Error during MIME type detection for {file_path}: {e}")
-        return False
+    # try:
+    #     detected_mimetype = magic.from_file(file_path, mime=True)
+    #     print(f"Detected MIME type: {detected_mimetype}")
+    #     if detected_mimetype not in ALLOWED_MIMETYPE_EXTENSIONS:
+    #         print(f"Error: File MIME type '{detected_mimetype}' is not in the allowed list: {ALLOWED_MIMETYPE_EXTENSIONS.keys()}")
+    #         return False
+    #     print("MIME type validation passed.")
+    # except Exception as e:
+    #     print(f"Error during MIME type detection for {file_path}: {e}")
+    #     return False
 
     if use_standard_method:
         print("Using standard s3_client.upload_file method (handles multipart automatically)...")
@@ -397,3 +396,102 @@ def restore_previous_version(s3_client, bucket_name: str, object_key: str) -> bo
         print(f"An unexpected error occurred restoring previous version for 's3://{bucket_name}/{object_key}': {e}")
         logging.exception(f"Unexpected error restoring version {previous_version_id} for {bucket_name}/{object_key}: {e}")
         return False
+
+def organize_objects_by_extension(s3_client, bucket_name: str) -> Optional[Dict[str, int]]:
+    """
+    Organizes objects in the root of an S3 bucket into folders named by their extension.
+
+    Args:
+        s3_client: Initialized boto3 S3 client.
+        bucket_name: Name of the bucket to organize.
+
+    Returns:
+        A dictionary containing the count of files moved per extension (e.g., {'jpg': 2, 'csv': 5}),
+        or None if a major error occurred (like bucket not found). Errors moving individual
+        files are logged but do not cause a total failure.
+    """
+    print(f"Starting organization process for bucket '{bucket_name}'...")
+    extension_counts = defaultdict(int)
+    processed_count = 0
+    moved_count = 0
+    skipped_count = 0
+    error_count = 0
+
+    try:
+        paginator = s3_client.get_paginator('list_objects_v2')
+        page_iterator = paginator.paginate(Bucket=bucket_name, Delimiter='/')
+        for page in page_iterator:
+            if 'Contents' in page:
+                for obj in page['Contents']:
+                    object_key = obj['Key']
+                    processed_count += 1
+                    if '/' in object_key or obj.get('Size', 0) == 0:
+                         skipped_count +=1
+                         continue
+
+                    try:
+                        _, extension = os.path.splitext(object_key)
+                        extension = extension.lower().strip('.') # Normalize: lowercase, remove dot
+                    except Exception as e:
+                        print(f"Warning: Could not extract extension for key '{object_key}': {e}")
+                        logging.warning(f"Extension extraction failed for {bucket_name}/{object_key}", exc_info=True)
+                        error_count += 1
+                        continue
+
+                    if not extension:
+                        print(f"Skipping '{object_key}' (no extension found).")
+                        skipped_count += 1
+                        continue
+
+                    new_key = f"{extension}/{object_key}"
+
+                    print(f"Attempting to move '{object_key}' to '{new_key}'...")
+                    try:
+                        copy_source = {'Bucket': bucket_name, 'Key': object_key}
+                        s3_client.copy_object(
+                            CopySource=copy_source,
+                            Bucket=bucket_name,
+                            Key=new_key
+                        )
+                        logging.info(f"Successfully copied {bucket_name}/{object_key} to {bucket_name}/{new_key}")
+
+                        try:
+                            s3_client.delete_object(Bucket=bucket_name, Key=object_key)
+                            logging.info(f"Successfully deleted original object {bucket_name}/{object_key}")
+                            extension_counts[extension] += 1
+                            moved_count += 1
+                            print(f"Successfully moved '{object_key}' to '{new_key}'.")
+                        except ClientError as delete_err:
+                             print(f"Error: Copied '{object_key}' to '{new_key}' but failed to delete original: {delete_err}")
+                             logging.error(f"Failed deleting original {bucket_name}/{object_key} after copy: {delete_err}", exc_info=True)
+                             error_count += 1
+
+                    except ClientError as move_err:
+                        print(f"Error: Failed to move '{object_key}': {move_err}")
+                        logging.error(f"Failed moving {bucket_name}/{object_key}: {move_err}", exc_info=True)
+                        error_count += 1
+                    except Exception as unexpected_err:
+                        print(f"Error: An unexpected error occurred moving '{object_key}': {unexpected_err}")
+                        logging.exception(f"Unexpected error moving {bucket_name}/{object_key}")
+                        error_count += 1
+
+        print("\n--- Summary ---")
+        print(f"Total objects scanned (at root): {processed_count}")
+        print(f"Objects successfully moved:     {moved_count}")
+        print(f"Objects skipped (in folder/no ext): {skipped_count}")
+        print(f"Errors during move:           {error_count}")
+        print("----------------------------")
+
+        return dict(extension_counts)
+
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchBucket':
+            print(f"Error: Bucket '{bucket_name}' not found.")
+        else:
+            print(f"Error listing objects in bucket '{bucket_name}': {e}")
+            logging.error(f"ClientError organizing bucket {bucket_name}: {e}", exc_info=True)
+        return None
+    except Exception as e:
+        print(f"An unexpected error occurred during the organization process for '{bucket_name}': {e}")
+        logging.exception(f"Unexpected error organizing bucket {bucket_name}")
+        return None
