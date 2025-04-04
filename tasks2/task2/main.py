@@ -2,7 +2,7 @@ import logging
 import json
 import sys
 from botocore.exceptions import ClientError
-from core.utils.client import init_s3_client
+from core.utils.s3.client import init_s3_client
 from core.utils.tasks import BaseTask
 from tasks2.utils.s3 import apply_bucket_policy, delete_public_access_block, read_bucket_policy
 

@@ -3,7 +3,7 @@ import os
 from botocore.exceptions import ClientError
 import math
 
-from core.settings import PART_MIN_SIZE
+from core.settings import ALLOWED_MIMETYPE_EXTENSIONS, PART_MIN_SIZE
 
 def upload_small_file(s3_client, bucket_name: str, file_path: str, object_key: str):
     """
@@ -36,9 +36,6 @@ def upload_large_file(
     file_path: str,
     object_key: str,
     use_standard_method: bool = False,
-    validate_mimetype: bool = False,
-    allowed_mimetypes: list = None,
-    part_size_mb: int = 10
 ):
     """
     Uploads a large file to S3, with options for standard vs manual multipart upload
@@ -51,10 +48,6 @@ def upload_large_file(
         object_key: The desired key (path) for the object in S3.
         use_standard_method: If True, use s3_client.upload_file (handles multipart automatically).
                              If False (default), perform manual multipart upload.
-        validate_mimetype: If True, validate the file's MIME type before uploading.
-        allowed_mimetypes: A list of allowed MIME types (e.g., ['image/jpeg', 'application/pdf'])
-                           Required if validate_mimetype is True.
-        part_size_mb: The size of each part in MB for manual multipart upload (min 5MB).
     """
     print(f"Attempting to upload large file: {file_path} to s3://{bucket_name}/{object_key}")
 
@@ -62,20 +55,16 @@ def upload_large_file(
         print(f"Error: The file {file_path} was not found.")
         return False
 
-    if validate_mimetype:
-        if not allowed_mimetypes:
-            print("Error: MIME type validation requested, but allowed_mimetypes list is empty or None.")
+    try:
+        detected_mimetype = magic.from_file(file_path, mime=True)
+        print(f"Detected MIME type: {detected_mimetype}")
+        if detected_mimetype not in ALLOWED_MIMETYPE_EXTENSIONS:
+            print(f"Error: File MIME type '{detected_mimetype}' is not in the allowed list: {ALLOWED_MIMETYPE_EXTENSIONS.keys()}")
             return False
-        try:
-            detected_mimetype = magic.from_file(file_path, mime=True)
-            print(f"Detected MIME type: {detected_mimetype}")
-            if detected_mimetype not in allowed_mimetypes:
-                print(f"Error: File MIME type '{detected_mimetype}' is not in the allowed list: {allowed_mimetypes}")
-                return False
-            print("MIME type validation passed.")
-        except Exception as e:
-            print(f"Error during MIME type detection for {file_path}: {e}")
-            return False
+        print("MIME type validation passed.")
+    except Exception as e:
+        print(f"Error during MIME type detection for {file_path}: {e}")
+        return False
 
     if use_standard_method:
         print("Using standard s3_client.upload_file method (handles multipart automatically)...")
@@ -92,11 +81,7 @@ def upload_large_file(
     else:
         print("Using manual multipart upload method...")
         upload_id = None
-        part_size = part_size_mb * 1024 * 1024
-        if part_size < PART_MIN_SIZE:
-             print(f"Warning: Specified part size {part_size_mb}MB is less than the minimum 5MB. Using 5MB.")
-             part_size = PART_MIN_SIZE
-
+        part_size = PART_MIN_SIZE
         try:
             mpu = s3_client.create_multipart_upload(Bucket=bucket_name, Key=object_key)
             upload_id = mpu['UploadId']

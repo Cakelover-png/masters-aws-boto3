@@ -1,27 +1,15 @@
 import argparse
 import json
 import logging
-import abc
-
-import boto3
 from botocore.exceptions import ClientError
 import requests
 
+from core.utils.s3.handlers import BaseS3CommandHandler
 from tasks2.utils.s3 import (
     apply_bucket_policy, bucket_exists, create_bucket, delete_bucket,
     delete_public_access_block, download_file_and_upload_to_s3, generate_public_read_policy,
     list_buckets, read_bucket_policy, set_object_acl
 )
-
-
-class BaseS3CommandHandler(abc.ABC):
-    def __init__(self, s3_client: boto3.client):
-        self.client = s3_client
-
-    @abc.abstractmethod
-    def execute(self, args: argparse.Namespace):
-        pass
-
 
 class ListBucketsHandler(BaseS3CommandHandler):
     def execute(self, args: argparse.Namespace):

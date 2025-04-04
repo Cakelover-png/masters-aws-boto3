@@ -2,9 +2,12 @@ import sys
 import logging
 from typing import Type
 from botocore.exceptions import ClientError
-from core.utils.client import init_s3_client
+from core.utils.s3.client import init_s3_client
 from core.utils.tasks import BaseTask
-from tasks2.task4.handler import BaseS3CommandHandler, BucketExistsHandler, CreateBucketHandler, DeleteBucketHandler, DeletePublicAccessBlockHandler, GetBucketPolicyHandler, ListBucketsHandler, SetBucketPolicyHandler, SetObjectAclHandler, UploadObjectHandler
+from tasks2.task4.handler import BaseS3CommandHandler, BucketExistsHandler, \
+      CreateBucketHandler, DeleteBucketHandler, DeletePublicAccessBlockHandler, \
+          GetBucketPolicyHandler, ListBucketsHandler, SetBucketPolicyHandler, \
+              SetObjectAclHandler, UploadObjectHandler
 
 
 class S3ManagementTask(BaseTask):
@@ -28,7 +31,6 @@ class S3ManagementTask(BaseTask):
 
 
     def setup_arguments(self):
-
         subparsers = self.parser.add_subparsers(
             dest='command',
             required=True,
@@ -81,6 +83,8 @@ class S3ManagementTask(BaseTask):
         p_delete_pab = subparsers.add_parser('delete-pab', help='Delete the Public Access Block configuration for a bucket.')
         p_delete_pab.add_argument('--bucket-name', required=True, help='Bucket name.')
         p_delete_pab.set_defaults(handler_class=DeletePublicAccessBlockHandler)
+
+        return subparsers
 
     def run(self, args):
         s3_client = None

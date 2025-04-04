@@ -10,7 +10,6 @@ def init_s3_client():
     missing_vars = [var for var in required_vars if not getenv(var)]
     if missing_vars:
         logging.warning(f"Missing environment variables: {', '.join(missing_vars)}. Relying on other credential sources (e.g., IAM role, config file).")
-
     client = boto3.client(
         "s3",
         aws_access_key_id=getenv("aws_access_key_id"),

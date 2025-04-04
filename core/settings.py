@@ -1,4 +1,4 @@
-AVAILABLE_PACKAGES = ['tasks1', 'tasks2']
+AVAILABLE_PACKAGES = ['tasks1', 'tasks2', 'tasks3']
 
 ALLOWED_MIMETYPE_EXTENSIONS = {
     'image/bmp': '.bmp',
