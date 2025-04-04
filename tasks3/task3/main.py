@@ -1,5 +1,4 @@
 from tasks3.task2.main import ObjectRemovalS3ManagementTask
-from tasks3.task2.handler import DeleteObjectHandler
 from tasks3.task3.handler import GetVersioningHandler, ListVersionsHandler, RestorePreviousVersionHandler
 
 
