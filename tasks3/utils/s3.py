@@ -1,4 +1,5 @@
 import logging
+from typing import Any, Dict, List, Optional
 import magic
 import os
 from botocore.exceptions import ClientError
@@ -231,4 +232,168 @@ def delete_s3_object(s3_client, bucket_name: str, object_key: str):
     except Exception as e:
         print(f"An unexpected error occurred deleting object 's3://{bucket_name}/{object_key}': {e}")
         logging.exception(f"Unexpected error deleting s3://{bucket_name}/{object_key}: {e}")
+        return False
+    
+
+def get_bucket_versioning_status(s3_client, bucket_name: str) -> Optional[str]:
+    """
+    Checks the versioning status of an S3 bucket.
+
+    Args:
+        s3_client: Initialized boto3 S3 client.
+        bucket_name: Name of the bucket to check.
+
+    Returns:
+        A string indicating the status ('Enabled', 'Suspended', 'Not Enabled')
+        or None if an error occurred.
+    """
+    print(f"Checking versioning status for bucket '{bucket_name}'...")
+    try:
+        response = s3_client.get_bucket_versioning(Bucket=bucket_name)
+        status = response.get('Status', 'Not Enabled')
+        print(f"Versioning status for bucket '{bucket_name}': {status}")
+        return status
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchBucket':
+            print(f"Error: Bucket '{bucket_name}' not found.")
+        else:
+            print(f"Error checking versioning for bucket '{bucket_name}': {e}")
+            logging.error(f"ClientError getting versioning for {bucket_name}: {e}", exc_info=True)
+        return None
+    except Exception as e:
+        print(f"An unexpected error occurred checking versioning for '{bucket_name}': {e}")
+        logging.exception(f"Unexpected error getting versioning for {bucket_name}: {e}")
+        return None
+
+def list_object_versions(s3_client, bucket_name: str, object_key: str) -> Optional[List[Dict[str, Any]]]:
+    """
+    Lists all versions of a specific object in an S3 bucket.
+
+    Args:
+        s3_client: Initialized boto3 S3 client.
+        bucket_name: Name of the bucket containing the object.
+        object_key: The key (path/filename) of the object.
+
+    Returns:
+        A list of version dictionaries (containing 'VersionId', 'LastModified', 'IsLatest', 'Size')
+        sorted by LastModified descending (newest first), or None if an error occurs or
+        versioning is not enabled/object not found. Returns an empty list if the object exists
+        but has no specific versions (e.g., versioning suspended or just created).
+    """
+    print(f"Listing versions for object 's3://{bucket_name}/{object_key}'...")
+    versions_list = []
+    try:
+        paginator = s3_client.get_paginator('list_object_versions')
+        page_iterator = paginator.paginate(Bucket=bucket_name, Prefix=object_key)
+
+        found_object = False
+        for page in page_iterator:
+            if 'Versions' in page:
+                for version in page['Versions']:
+                     if version['Key'] == object_key:
+                        found_object = True
+                        versions_list.append({
+                            'VersionId': version.get('VersionId', 'null'),
+                            'LastModified': version['LastModified'],
+                            'IsLatest': version['IsLatest'],
+                            'Size': version.get('Size', 0)
+                        })
+            if 'DeleteMarkers' in page:
+                 for marker in page['DeleteMarkers']:
+                      if marker['Key'] == object_key:
+                         found_object = True
+                         versions_list.append({
+                             'VersionId': marker.get('VersionId'),
+                             'LastModified': marker['LastModified'],
+                             'IsLatest': marker['IsLatest'],
+                             'Size': 0,
+                             'Type': 'DeleteMarker'
+                         })
+
+        if not found_object:
+             print(f"Object 's3://{bucket_name}/{object_key}' not found or has no versions/markers.")
+             try:
+                 s3_client.head_object(Bucket=bucket_name, Key=object_key)
+                 print(f"Object 's3://{bucket_name}/{object_key}' exists but has no tracked versions/markers (versioning might be suspended?).")
+             except ClientError as head_error:
+                 if head_error.response['Error']['Code'] == '404':
+                      print(f"Object 's3://{bucket_name}/{object_key}' not found.")
+                 else:
+                      raise head_error
+             return []
+
+        versions_list.sort(key=lambda x: x['LastModified'], reverse=True)
+
+        print(f"Found {len(versions_list)} version(s)/marker(s) for 's3://{bucket_name}/{object_key}'.")
+        return versions_list
+
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchBucket':
+            print(f"Error: Bucket '{bucket_name}' not found.")
+        else:
+            print(f"Error listing versions for 's3://{bucket_name}/{object_key}': {e}")
+            logging.error(f"ClientError listing versions for {bucket_name}/{object_key}: {e}", exc_info=True)
+        return None
+    except Exception as e:
+        print(f"An unexpected error occurred listing versions for 's3://{bucket_name}/{object_key}': {e}")
+        logging.exception(f"Unexpected error listing versions for {bucket_name}/{object_key}: {e}")
+        return None
+
+
+def restore_previous_version(s3_client, bucket_name: str, object_key: str) -> bool:
+    """
+    Restores the second most recent version of an object to become the current version.
+
+    This works by copying the second most recent version over the current key,
+    which creates a new version identical to the desired previous one. The actual
+    previous version remains in the history.
+
+    Args:
+        s3_client: Initialized boto3 S3 client.
+        bucket_name: Name of the bucket containing the object.
+        object_key: The key (path/filename) of the object.
+
+    Returns:
+        True if the restoration (copy) was successful, False otherwise.
+    """
+    print(f"Attempting to restore previous version for 's3://{bucket_name}/{object_key}'...")
+
+    versions = list_object_versions(s3_client, bucket_name, object_key)
+
+    if versions is None:
+        print("Error: Could not retrieve versions to determine previous version.")
+        return False
+
+    actual_versions = [v for v in versions if v.get('Type') != 'DeleteMarker' and v.get('VersionId') != 'null']
+
+    if len(actual_versions) < 2:
+        print(f"Error: Cannot restore previous version. Found {len(actual_versions)} actual version(s) (excluding delete markers and null IDs). At least two are required.")
+        return False
+
+    previous_version_info = actual_versions[1]
+    previous_version_id = previous_version_info['VersionId']
+
+    print(f"Identified previous version to restore: VersionId='{previous_version_id}', LastModified='{previous_version_info['LastModified']}'")
+
+    try:
+        copy_source = {
+            'Bucket': bucket_name,
+            'Key': object_key,
+            'VersionId': previous_version_id
+        }
+        print(f"Executing copy operation: Source={copy_source}, Destination=s3://{bucket_name}/{object_key}")
+        s3_client.copy_object(
+            Bucket=bucket_name,
+            Key=object_key,
+            CopySource=copy_source,
+        )
+        print(f"Successfully restored version '{previous_version_id}'. It is now the latest version of 's3://{bucket_name}/{object_key}'.")
+        return True
+    except ClientError as e:
+        print(f"Error restoring previous version for 's3://{bucket_name}/{object_key}': {e}")
+        logging.error(f"ClientError restoring version {previous_version_id} for {bucket_name}/{object_key}: {e}", exc_info=True)
+        return False
+    except Exception as e:
+        print(f"An unexpected error occurred restoring previous version for 's3://{bucket_name}/{object_key}': {e}")
+        logging.exception(f"Unexpected error restoring version {previous_version_id} for {bucket_name}/{object_key}: {e}")
         return False
