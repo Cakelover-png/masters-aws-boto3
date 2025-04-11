@@ -130,5 +130,80 @@ def simple_delete_old_versions(s3_client: boto3.client, bucket_name: str, object
     except Exception as e:
         logging.error(f"CRITICAL UNEXPECTED ERROR during S3 delete_objects call: {e}", exc_info=True)
         return -1
+    
+
+
+
+def setup_static_website(s3_client: boto3.client, bucket_name: str, first_name: str, last_name: str) -> tuple[bool, str | None]:
+    """
+    Creates a simple index.html, uploads it, and configures S3 static website hosting.
+
+    Args:
+        s3_client: Initialized Boto3 S3 client.
+        bucket_name: The target S3 bucket name.
+        first_name: User's first name for the HTML content.
+        last_name: User's last name for the HTML content.
+
+    Returns:
+        A tuple containing:
+        - bool: True if setup was successful, False otherwise.
+        - str | None: The website URL if successful, None otherwise.
+    """
+    index_key = 'index.html'
+    error_key = 'error.html'
+
+    html_content = f"""<!DOCTYPE html>
+            <html>
+            <head>
+                <title>Welcome!</title>
+                <style>
+                    body {{ font-family: sans-serif; text-align: center; padding-top: 50px; }}
+                    h1 {{ color: #333; }}
+                </style>
+            </head>
+            <body>
+                <h1>Hello, {first_name} {last_name}!</h1>
+                <p>This page is hosted on Amazon S3.</p>
+            </body>
+            </html>
+    """
+
+    try:
+        logging.info(f"Uploading {index_key} to bucket '{bucket_name}'...")
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=index_key,
+            Body=html_content.encode('utf-8'),
+            ContentType='text/html'
+        )
+        logging.info(f"Successfully uploaded {index_key}.")
+
+        logging.info(f"Configuring static website hosting for bucket '{bucket_name}'...")
+        website_configuration = {
+            'ErrorDocument': {'Key': error_key},
+            'IndexDocument': {'Suffix': index_key},
+        }
+        s3_client.put_bucket_website(
+            Bucket=bucket_name,
+            WebsiteConfiguration=website_configuration
+        )
+
+        location_response = s3_client.get_bucket_location(Bucket=bucket_name)
+        region = location_response.get('LocationConstraint') or 'us-east-1'
+
+        if region == 'us-east-1':
+             website_url = f"http://{bucket_name}.s3-website-{region}.amazonaws.com"
+        else:
+             website_url = f"http://{bucket_name}.s3-website.{region}.amazonaws.com"
+
+        logging.info(f"Static website setup complete. URL: {website_url}")
+        return True, website_url
+    except botocore.exceptions.ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code")
+        logging.error(f"AWS S3 Client Error during website setup (Code: {error_code}): {e}")
+        return False, None
+    except Exception as e:
+        logging.error(f"An unexpected error occurred during website setup: {e}", exc_info=True)
+        return False, None
 
 
