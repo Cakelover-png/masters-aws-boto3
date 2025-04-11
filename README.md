@@ -99,3 +99,8 @@ tasks1
   - [x] Task 2
   - [x] Task 3
   - [x] Task 4
+
+- ლექცია მეოთხე:
+  - [x] Task 1
+  - [x] Task 2
+  - [x] Task 3
