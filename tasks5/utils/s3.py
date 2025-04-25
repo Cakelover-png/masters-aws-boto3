@@ -2,7 +2,6 @@ import json
 import os
 import mimetypes
 import logging
-import random
 from botocore.exceptions import ClientError
 import requests
 import datetime
