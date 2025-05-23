@@ -31,3 +31,4 @@ def init_s3_client():
   except Exception as e:
     logging.error(f"An unexpected error occurred initializing S3 client: {e}")
     raise
+  
